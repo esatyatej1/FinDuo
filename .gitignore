@@ -1,0 +1,41 @@
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*.iml
+*.ipr
+*.iws
+*.apk
+APK/
+
+# Python / Backend
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+backend/venv/
+backend/__pycache__/
+backend/.pytest_cache/
+venv/
+.env
+backend/.env
+
+# Flutter / Dart / Frontend
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.pub-cache/
+frontend/.pub/
+frontend/build/
+frontend/coverage/
+frontend/android/app/debug/
+frontend/android/app/profile/
+frontend/android/app/release/
+app.*.symbols
+app.*.map.json
+
+# Operating System
+.DS_Store
+Thumbs.db
