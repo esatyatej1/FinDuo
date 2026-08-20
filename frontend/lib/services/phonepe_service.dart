@@ -4,12 +4,12 @@ import 'package:permission_handler/permission_handler.dart';
 /// Parsed PhonePe (or bank UPI) transaction from SMS
 class PhonePeTransaction {
   final double amount;
-  final String date;       // "YYYY-MM-DD"
+  final String date; // "YYYY-MM-DD"
   final String rawSms;
   final String sender;
-  final String merchant;   // payee name if extractable
+  final String merchant; // payee name if extractable
   final String refNo;
-  bool selected;           // for batch import UI
+  bool selected; // for batch import UI
 
   PhonePeTransaction({
     required this.amount,
@@ -41,9 +41,7 @@ class PhonePeService {
   }) async {
     if (!await hasPermission()) return [];
 
-    final messages = await _query.querySms(
-      kinds: [SmsQueryKind.inbox],
-    );
+    final messages = await _query.querySms(kinds: [SmsQueryKind.inbox]);
 
     final cutoff = DateTime.now().subtract(Duration(days: daysBack));
     final results = <PhonePeTransaction>[];
@@ -72,10 +70,18 @@ class PhonePeService {
     final s = sender.toLowerCase();
 
     // Must contain PhonePe reference OR be from a known bank about UPI debit
-    final hasPhonePe = b.contains('phonepe') || s.contains('phonepe') || s.contains('ppye');
+    final hasPhonePe =
+        b.contains('phonepe') || s.contains('phonepe') || s.contains('ppye');
     final hasUpi = b.contains('upi') || b.contains('imps');
-    final hasDebit = b.contains('debited') || b.contains('debit') || b.contains('paid') || b.contains('sent');
-    final hasBankSender = RegExp(r'(hdfc|axis|sbi|icici|kotak|pnb|bob|canara|union|idfc|yesbank|indusind)', caseSensitive: false).hasMatch(s);
+    final hasDebit =
+        b.contains('debited') ||
+        b.contains('debit') ||
+        b.contains('paid') ||
+        b.contains('sent');
+    final hasBankSender = RegExp(
+      r'(hdfc|axis|sbi|icici|kotak|pnb|bob|canara|union|idfc|yesbank|indusind)',
+      caseSensitive: false,
+    ).hasMatch(s);
 
     if (hasPhonePe && hasDebit) return true;
     if (hasBankSender && hasUpi && hasDebit) return true;
@@ -109,8 +115,14 @@ class PhonePeService {
   double? _extractAmount(String body) {
     // Patterns: INR 1,234.56 | Rs.500 | Rs 500 | ₹500 | INR500
     final patterns = [
-      RegExp(r'(?:INR|Rs\.?|₹)\s*([0-9,]+(?:\.[0-9]{1,2})?)', caseSensitive: false),
-      RegExp(r'([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:INR|Rs\.?)', caseSensitive: false),
+      RegExp(
+        r'(?:INR|Rs\.?|₹)\s*([0-9,]+(?:\.[0-9]{1,2})?)',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:INR|Rs\.?)',
+        caseSensitive: false,
+      ),
     ];
     for (final p in patterns) {
       final m = p.firstMatch(body);
@@ -129,7 +141,20 @@ class PhonePeService {
       RegExp(r'(\d{2})[-/](\d{2})[-/](\d{2,4})'),
       RegExp(r'(\d{2})-([A-Za-z]{3})-(\d{2,4})'),
     ];
-    final months = {'jan':1,'feb':2,'mar':3,'apr':4,'may':5,'jun':6,'jul':7,'aug':8,'sep':9,'oct':10,'nov':11,'dec':12};
+    final months = {
+      'jan': 1,
+      'feb': 2,
+      'mar': 3,
+      'apr': 4,
+      'may': 5,
+      'jun': 6,
+      'jul': 7,
+      'aug': 8,
+      'sep': 9,
+      'oct': 10,
+      'nov': 11,
+      'dec': 12,
+    };
 
     for (final p in patterns) {
       final m = p.firstMatch(body);
@@ -147,7 +172,7 @@ class PhonePeService {
           }
           year = int.parse(m3);
           if (year < 100) year += 2000;
-          return '${year.toString()}-${month.toString().padLeft(2,'0')}-${day.toString().padLeft(2,'0')}';
+          return '${year.toString()}-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
         } catch (_) {}
       }
     }
@@ -157,7 +182,10 @@ class PhonePeService {
   String _extractMerchant(String body) {
     // "to [Merchant]" or "at [Merchant]" or "PaymentTo:[Merchant]"
     final patterns = [
-      RegExp(r'(?:to|at)\s+([A-Za-z0-9 &_\-]{2,30}?)(?:\s+on|\s+via|\s+ref|\s*\.|$)', caseSensitive: false),
+      RegExp(
+        r'(?:to|at)\s+([A-Za-z0-9 &_\-]{2,30}?)(?:\s+on|\s+via|\s+ref|\s*\.|$)',
+        caseSensitive: false,
+      ),
       RegExp(r'PaymentTo[:\s]+([^\s,\.]+)', caseSensitive: false),
       RegExp(r'VPA[:\s]+([^\s,\.]+)', caseSensitive: false),
     ];
@@ -172,12 +200,15 @@ class PhonePeService {
   }
 
   String _extractRef(String body) {
-    final p = RegExp(r'(?:Ref|UPI Ref|Ref No|Transaction ID)[:\s#]+([0-9A-Za-z]{6,20})', caseSensitive: false);
+    final p = RegExp(
+      r'(?:Ref|UPI Ref|Ref No|Transaction ID)[:\s#]+([0-9A-Za-z]{6,20})',
+      caseSensitive: false,
+    );
     final m = p.firstMatch(body);
     return m?.group(1) ?? '';
   }
 
   String _formatDate(DateTime d) {
-    return '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   }
 }

@@ -56,6 +56,47 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     access_token = create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
 
+import httpx
+import uuid
+from auth import get_password_hash
+
+@app.post("/auth/google", response_model=schemas.Token)
+async def google_auth(request: dict, db: AsyncSession = Depends(get_db)):
+    id_token = request.get("id_token")
+    if not id_token:
+        raise HTTPException(status_code=400, detail="id_token missing")
+    
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"https://oauth2.googleapis.com/tokeninfo?id_token={id_token}")
+        if resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid Google token")
+        
+        data = resp.json()
+        email = data.get("email")
+        name = data.get("name")
+        if not email:
+            raise HTTPException(status_code=400, detail="Email not provided by Google")
+            
+    # Check if user exists
+    result = await db.execute(select(models.User).where(models.User.username == email))
+    user = result.scalars().first()
+    
+    if not user:
+        # Create user
+        random_pwd = str(uuid.uuid4())
+        user = models.User(
+            username=email,
+            name=name or email.split("@")[0],
+            password_hash=get_password_hash(random_pwd),
+            monthly_income=0.0
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        
+    access_token = create_access_token(data={"sub": user.username})
+    return {"access_token": access_token, "token_type": "bearer"}
+
 @app.get("/users/me", response_model=schemas.UserResponse)
 async def read_users_me(current_user: models.User = Depends(get_current_user)):
     return current_user
@@ -72,6 +113,61 @@ async def get_all_users(db: AsyncSession = Depends(get_db), current_user: models
     result = await db.execute(select(models.User))
     return result.scalars().all()
 
+@app.post("/users", response_model=schemas.UserResponse)
+async def create_user(data: schemas.UserCreate, db: AsyncSession = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # Check if username already exists
+    existing = await db.execute(select(models.User).where(models.User.username == data.username))
+    if existing.scalars().first():
+        raise HTTPException(status_code=400, detail="Username already exists")
+    new_user = models.User(
+        name=data.name,
+        username=data.username,
+        password_hash=get_password_hash(data.password),
+        monthly_income=data.monthly_income,
+    )
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    return new_user
+
+@app.put("/users/me", response_model=schemas.UserResponse)
+async def update_my_profile(data: schemas.UserProfileUpdate, db: AsyncSession = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    update_data = data.dict(exclude_unset=True)
+    if 'password' in update_data:
+        current_user.password_hash = get_password_hash(update_data.pop('password'))
+    for key, val in update_data.items():
+        setattr(current_user, key, val)
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+@app.put("/users/{user_id}", response_model=schemas.UserResponse)
+async def update_user(user_id: int, data: schemas.UserProfileUpdate, db: AsyncSession = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    result = await db.execute(select(models.User).where(models.User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    update_data = data.dict(exclude_unset=True)
+    if 'password' in update_data:
+        user.password_hash = get_password_hash(update_data.pop('password'))
+    for key, val in update_data.items():
+        setattr(user, key, val)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+@app.delete("/users/{user_id}")
+async def delete_user(user_id: int, db: AsyncSession = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    if current_user.id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    result = await db.execute(select(models.User).where(models.User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.delete(user)
+    await db.commit()
+    return {"status": "deleted"}
+
 @app.put("/users/{user_id}/income", response_model=schemas.UserResponse)
 async def update_user_income(user_id: int, income: float, db: AsyncSession = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     result = await db.execute(select(models.User).where(models.User.id == user_id))
@@ -82,6 +178,36 @@ async def update_user_income(user_id: int, income: float, db: AsyncSession = Dep
     await db.commit()
     await db.refresh(user)
     return user
+
+# ─────────────────────────────────────────
+# Settings
+# ─────────────────────────────────────────
+@app.get("/users/me/settings", response_model=schemas.UserSettingsResponse)
+async def get_my_settings(db: AsyncSession = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    result = await db.execute(select(models.UserSettings).where(models.UserSettings.user_id == current_user.id))
+    settings = result.scalars().first()
+    if not settings:
+        settings = models.UserSettings(user_id=current_user.id)
+        db.add(settings)
+        await db.commit()
+        await db.refresh(settings)
+    return settings
+
+@app.put("/users/me/settings", response_model=schemas.UserSettingsResponse)
+async def update_my_settings(data: schemas.UserSettingsUpdate, db: AsyncSession = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    result = await db.execute(select(models.UserSettings).where(models.UserSettings.user_id == current_user.id))
+    settings = result.scalars().first()
+    if not settings:
+        settings = models.UserSettings(user_id=current_user.id)
+        db.add(settings)
+        
+    update_data = data.dict(exclude_unset=True)
+    for key, val in update_data.items():
+        setattr(settings, key, val)
+        
+    await db.commit()
+    await db.refresh(settings)
+    return settings
 
 # ─────────────────────────────────────────
 # Accounts
@@ -299,12 +425,17 @@ async def get_transaction_summary(
     result = await db.execute(query)
     txns = result.scalars().all()
 
-    total = sum(t.amount for t in txns)
+    def is_received(t):
+        return t.txn_type == "received" or (t.notes and "Received:" in str(t.notes))
+
+    total = sum(t.amount for t in txns if not is_received(t))
+    total_received = sum(t.amount for t in txns if is_received(t))
     by_category: dict = {}
     for t in txns:
-        cat_id = t.category_id
-        key = str(cat_id) if cat_id else "uncategorized"
-        by_category[key] = by_category.get(key, 0) + t.amount
+        if not is_received(t):
+            cat_id = t.category_id
+            key = str(cat_id) if cat_id else "uncategorized"
+            by_category[key] = by_category.get(key, 0) + t.amount
 
     by_method: dict = {}
     for t in txns:
@@ -312,6 +443,7 @@ async def get_transaction_summary(
 
     return {
         "total": total,
+        "total_received": total_received,
         "count": len(txns),
         "by_category": by_category,
         "by_method": by_method,
@@ -325,6 +457,18 @@ async def create_transaction(
 ):
     new_txn = models.Transaction(**txn.dict(), user_id=current_user.id)
     db.add(new_txn)
+    
+    if txn.account_ref:
+        acc_result = await db.execute(select(models.Account).where(models.Account.user_id == current_user.id))
+        accounts = acc_result.scalars().all()
+        for acc in accounts:
+            if acc.bank_name in txn.account_ref:
+                if txn.txn_type == "sent":
+                    acc.balance_left -= txn.amount
+                elif txn.txn_type == "received":
+                    acc.balance_left += txn.amount
+                break
+
     await db.commit()
     await db.refresh(new_txn)
     return new_txn
@@ -345,8 +489,32 @@ async def update_transaction(
     txn = result.scalars().first()
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found")
+        
+    if txn.account_ref:
+        acc_result = await db.execute(select(models.Account).where(models.Account.user_id == current_user.id))
+        accounts = acc_result.scalars().all()
+        for acc in accounts:
+            if acc.bank_name in txn.account_ref:
+                if txn.txn_type == "sent":
+                    acc.balance_left += txn.amount
+                elif txn.txn_type == "received":
+                    acc.balance_left -= txn.amount
+                break
+
     for key, val in data.dict(exclude_unset=True).items():
         setattr(txn, key, val)
+        
+    if txn.account_ref:
+        acc_result = await db.execute(select(models.Account).where(models.Account.user_id == current_user.id))
+        accounts = acc_result.scalars().all()
+        for acc in accounts:
+            if acc.bank_name in txn.account_ref:
+                if txn.txn_type == "sent":
+                    acc.balance_left -= txn.amount
+                elif txn.txn_type == "received":
+                    acc.balance_left += txn.amount
+                break
+
     await db.commit()
     await db.refresh(txn)
     return txn
@@ -366,6 +534,18 @@ async def delete_transaction(
     txn = result.scalars().first()
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found")
+        
+    if txn.account_ref:
+        acc_result = await db.execute(select(models.Account).where(models.Account.user_id == current_user.id))
+        accounts = acc_result.scalars().all()
+        for acc in accounts:
+            if acc.bank_name in txn.account_ref:
+                if txn.txn_type == "sent":
+                    acc.balance_left += txn.amount
+                elif txn.txn_type == "received":
+                    acc.balance_left -= txn.amount
+                break
+                
     await db.delete(txn)
     await db.commit()
     return {"status": "deleted"}
@@ -506,23 +686,351 @@ async def get_monthly_analytics(
         )
         res = await db.execute(query)
         txns = res.scalars().all()
-        total = sum(t.amount for t in txns)
+        def is_received(t):
+            return t.txn_type == "received" or (t.notes and "Received:" in str(t.notes))
+            
+        total = sum(t.amount for t in txns if not is_received(t))
+        total_received = sum(t.amount for t in txns if is_received(t))
         count = len(txns)
 
         # Category breakdown for this month
         by_cat: dict = {}
         for t in txns:
-            key = str(t.category_id) if t.category_id else "uncategorized"
-            by_cat[key] = by_cat.get(key, 0) + t.amount
+            if not is_received(t):
+                key = str(t.category_id) if t.category_id else "uncategorized"
+                by_cat[key] = by_cat.get(key, 0) + t.amount
 
         result_data.append({
             "month": month_str,
             "total": total,
+            "total_received": total_received,
             "count": count,
             "by_category": by_cat,
         })
 
     return result_data
+
+
+@app.get("/analytics/daily-spending")
+async def get_daily_spending(
+    month: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Returns per-day spending totals for the given month (sparkline data)."""
+    from datetime import datetime
+    if not month:
+        now = datetime.now()
+        month = f"{now.year}-{str(now.month).zfill(2)}"
+
+    query = select(models.Transaction).where(
+        models.Transaction.user_id == current_user.id,
+        models.Transaction.txn_date.like(f"{month}%")
+    )
+    res = await db.execute(query)
+    txns = res.scalars().all()
+    
+    def is_received(t):
+        return t.txn_type == "received" or (t.notes and "Received:" in str(t.notes))
+
+    daily: dict = {}
+    daily_received: dict = {}
+    for t in txns:
+        day = t.txn_date[:10] if len(t.txn_date) >= 10 else t.txn_date
+        if is_received(t):
+            daily_received[day] = daily_received.get(day, 0) + t.amount
+        else:
+            daily[day] = daily.get(day, 0) + t.amount
+
+    # Build all days in month
+    parts = month.split("-")
+    year, mon = int(parts[0]), int(parts[1])
+    import calendar
+    num_days = calendar.monthrange(year, mon)[1]
+    now = datetime.now()
+    max_day = min(num_days, now.day if year == now.year and mon == now.month else num_days)
+
+    result = []
+    for d in range(1, max_day + 1):
+        day_str = f"{month}-{str(d).zfill(2)}"
+        result.append({
+            "date": day_str,
+            "spent": daily.get(day_str, 0),
+            "received": daily_received.get(day_str, 0),
+        })
+
+    return result
+
+
+@app.get("/analytics/spending-velocity")
+async def get_spending_velocity(
+    month: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Returns spending velocity metrics: avg per day, projected month total, streak data."""
+    from datetime import datetime
+    import calendar
+    now = datetime.now()
+    if not month:
+        month = f"{now.year}-{str(now.month).zfill(2)}"
+
+    query = select(models.Transaction).where(
+        models.Transaction.user_id == current_user.id,
+        models.Transaction.txn_date.like(f"{month}%")
+    )
+    res = await db.execute(query)
+    txns = res.scalars().all()
+
+    def is_received(t):
+        return t.txn_type == "received" or (t.notes and "Received:" in str(t.notes))
+
+    total_spent = sum(t.amount for t in txns if not is_received(t))
+    total_received = sum(t.amount for t in txns if is_received(t))
+    sent_count = sum(1 for t in txns if not is_received(t))
+    recv_count = sum(1 for t in txns if is_received(t))
+
+    parts = month.split("-")
+    year, mon = int(parts[0]), int(parts[1])
+    total_days = calendar.monthrange(year, mon)[1]
+    
+    # Days elapsed so far
+    if year == now.year and mon == now.month:
+        days_elapsed = now.day
+    else:
+        days_elapsed = total_days
+
+    avg_per_day = total_spent / max(days_elapsed, 1)
+    projected_total = avg_per_day * total_days
+    
+    # Today's spending
+    today_str = now.strftime("%Y-%m-%d")
+    today_spent = sum(t.amount for t in txns if not is_received(t) and t.txn_date[:10] == today_str)
+    today_received = sum(t.amount for t in txns if is_received(t) and t.txn_date[:10] == today_str)
+    today_count = sum(1 for t in txns if t.txn_date[:10] == today_str)
+
+    # Find highest spending day
+    daily: dict = {}
+    for t in txns:
+        if not is_received(t):
+            day = t.txn_date[:10]
+            daily[day] = daily.get(day, 0) + t.amount
+    highest_day = max(daily.items(), key=lambda x: x[1]) if daily else (None, 0)
+    
+    # Avg transaction amount
+    avg_txn = total_spent / max(sent_count, 1)
+
+    return {
+        "total_spent": total_spent,
+        "total_received": total_received,
+        "sent_count": sent_count,
+        "received_count": recv_count,
+        "days_elapsed": days_elapsed,
+        "total_days": total_days,
+        "avg_per_day": round(avg_per_day, 2),
+        "projected_total": round(projected_total, 2),
+        "today_spent": today_spent,
+        "today_received": today_received,
+        "today_count": today_count,
+        "highest_day": highest_day[0],
+        "highest_day_amount": highest_day[1],
+        "avg_transaction": round(avg_txn, 2),
+    }
+
+
+@app.get("/analytics/account-flow")
+async def get_account_flow(
+    month: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Returns per-account inflow/outflow for the month."""
+    from datetime import datetime
+    now = datetime.now()
+    if not month:
+        month = f"{now.year}-{str(now.month).zfill(2)}"
+
+    # Get user accounts
+    acc_result = await db.execute(select(models.Account).where(models.Account.user_id == current_user.id))
+    accounts = acc_result.scalars().all()
+
+    # Get transactions
+    query = select(models.Transaction).where(
+        models.Transaction.user_id == current_user.id,
+        models.Transaction.txn_date.like(f"{month}%")
+    )
+    res = await db.execute(query)
+    txns = res.scalars().all()
+
+    def is_received(t):
+        return t.txn_type == "received" or (t.notes and "Received:" in str(t.notes))
+
+    # Group by payment method
+    method_flow: dict = {}
+    for t in txns:
+        m = t.payment_method or "UPI"
+        if m not in method_flow:
+            method_flow[m] = {"outflow": 0, "inflow": 0, "count": 0}
+        if is_received(t):
+            method_flow[m]["inflow"] += t.amount
+        else:
+            method_flow[m]["outflow"] += t.amount
+        method_flow[m]["count"] += 1
+
+    # Account summary
+    account_data = []
+    for a in accounts:
+        account_data.append({
+            "id": a.id,
+            "bank_name": a.bank_name,
+            "type": a.account_type,
+            "balance": a.balance_left,
+            "limit": a.limit,
+            "is_active": a.is_active,
+        })
+
+    return {
+        "method_flow": method_flow,
+        "accounts": account_data,
+    }
+
+
+@app.get("/analytics/insights")
+async def get_spending_insights(
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Returns AI-generated quick insights from spending patterns."""
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    curr_month = f"{now.year}-{str(now.month).zfill(2)}"
+    prev_dt = datetime(now.year, now.month, 1) - timedelta(days=1)
+    prev_month = f"{prev_dt.year}-{str(prev_dt.month).zfill(2)}"
+
+    # Current month transactions
+    res = await db.execute(
+        select(models.Transaction).where(
+            models.Transaction.user_id == current_user.id,
+            models.Transaction.txn_date.like(f"{curr_month}%")
+        )
+    )
+    curr_txns = res.scalars().all()
+
+    # Previous month transactions
+    res2 = await db.execute(
+        select(models.Transaction).where(
+            models.Transaction.user_id == current_user.id,
+            models.Transaction.txn_date.like(f"{prev_month}%")
+        )
+    )
+    prev_txns = res2.scalars().all()
+
+    def is_received(t):
+        return t.txn_type == "received" or (t.notes and "Received:" in str(t.notes))
+
+    curr_spent = sum(t.amount for t in curr_txns if not is_received(t))
+    prev_spent = sum(t.amount for t in prev_txns if not is_received(t))
+    curr_received = sum(t.amount for t in curr_txns if is_received(t))
+
+    # Spending change %
+    spend_change = 0.0
+    if prev_spent > 0:
+        spend_change = round(((curr_spent - prev_spent) / prev_spent) * 100, 1)
+
+    # Top category this month
+    cat_totals: dict = {}
+    for t in curr_txns:
+        if not is_received(t):
+            key = str(t.category_id) if t.category_id else "uncategorized"
+            cat_totals[key] = cat_totals.get(key, 0) + t.amount
+    
+    top_cat_id = max(cat_totals.items(), key=lambda x: x[1])[0] if cat_totals else None
+    top_cat_name = "Uncategorized"
+    top_cat_amount = 0.0
+    if top_cat_id and top_cat_id != "uncategorized":
+        cat_res = await db.execute(select(models.Category).where(models.Category.id == int(top_cat_id)))
+        cat = cat_res.scalars().first()
+        if cat:
+            top_cat_name = cat.name
+        top_cat_amount = cat_totals.get(top_cat_id, 0)
+    elif top_cat_id == "uncategorized":
+        top_cat_amount = cat_totals.get("uncategorized", 0)
+
+    # Most frequent payment method
+    method_counts: dict = {}
+    for t in curr_txns:
+        m = t.payment_method or "UPI"
+        method_counts[m] = method_counts.get(m, 0) + 1
+    top_method = max(method_counts.items(), key=lambda x: x[1])[0] if method_counts else "UPI"
+
+    # Largest single transaction
+    sent_txns = [t for t in curr_txns if not is_received(t)]
+    largest = max(sent_txns, key=lambda t: t.amount) if sent_txns else None
+
+    # Active days (days with at least one txn)
+    active_days = len(set(t.txn_date[:10] for t in curr_txns))
+
+    # Category count
+    unique_cats = len(set(str(t.category_id) for t in curr_txns if t.category_id))
+
+    insights = []
+    if spend_change > 0:
+        insights.append({
+            "type": "warning",
+            "icon": "trending_up",
+            "text": f"Spending is up {spend_change}% vs last month",
+        })
+    elif spend_change < 0:
+        insights.append({
+            "type": "positive",
+            "icon": "trending_down",
+            "text": f"Spending is down {abs(spend_change)}% vs last month 🎉",
+        })
+
+    if top_cat_name != "Uncategorized":
+        pct = round((top_cat_amount / curr_spent * 100), 0) if curr_spent > 0 else 0
+        insights.append({
+            "type": "info",
+            "icon": "category",
+            "text": f"Top category: {top_cat_name} ({pct:.0f}% of spending)",
+        })
+
+    if largest:
+        insights.append({
+            "type": "info",
+            "icon": "arrow_upward",
+            "text": f"Biggest expense: ₹{largest.amount:,.0f} — {largest.title or 'Uncategorized'}",
+        })
+
+    insights.append({
+        "type": "info",
+        "icon": "payment",
+        "text": f"Most used: {top_method} ({method_counts.get(top_method, 0)} transactions)",
+    })
+
+    if curr_received > 0:
+        insights.append({
+            "type": "positive",
+            "icon": "call_received",
+            "text": f"Received ₹{curr_received:,.0f} this month",
+        })
+
+    insights.append({
+        "type": "info",
+        "icon": "calendar_today",
+        "text": f"Active {active_days} days across {unique_cats} categories",
+    })
+
+    return {
+        "insights": insights,
+        "spend_change_pct": spend_change,
+        "current_total": curr_spent,
+        "previous_total": prev_spent,
+        "current_received": curr_received,
+        "top_category": top_cat_name,
+        "top_category_amount": top_cat_amount,
+        "top_method": top_method,
+    }
 
 
 

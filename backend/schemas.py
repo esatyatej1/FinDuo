@@ -13,6 +13,18 @@ class UserBase(BaseModel):
     name: str
     monthly_income: float
 
+class UserCreate(BaseModel):
+    username: str
+    name: str
+    password: str
+    monthly_income: float = 0.0
+
+class UserProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    username: Optional[str] = None
+    monthly_income: Optional[float] = None
+    password: Optional[str] = None
+
 class UserResponse(UserBase):
     id: int
     class Config:
@@ -105,7 +117,9 @@ class TransactionCreate(BaseModel):
     account_ref: str = ""
     txn_date: str  # "YYYY-MM-DD"
     txn_ref: str = ""   # UPI ref for dedup
-    source: str = "manual"  # manual | sms | gmail | auto_sms | auto_gmail
+    source: str = "manual"  # manual | sms | gmail | auto_sms | auto_gmail | auto_phonepe
+    is_pending_review: bool = False
+    txn_type: str = "sent"
 
 class TransactionUpdate(BaseModel):
     amount: Optional[float] = None
@@ -118,6 +132,8 @@ class TransactionUpdate(BaseModel):
     txn_date: Optional[str] = None
     txn_ref: Optional[str] = None
     source: Optional[str] = None
+    is_pending_review: Optional[bool] = None
+    txn_type: Optional[str] = None
 
 class TransactionResponse(TransactionCreate):
     id: int
@@ -139,3 +155,21 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
 
+# --- User Settings Schemas ---
+class UserSettingsBase(BaseModel):
+    is_dark_mode: bool = True
+    theme_color: str = "0xFF00BCD4"
+    selected_font: str = "Inter"
+    currency: str = "₹"
+
+class UserSettingsUpdate(BaseModel):
+    is_dark_mode: Optional[bool] = None
+    theme_color: Optional[str] = None
+    selected_font: Optional[str] = None
+    currency: Optional[str] = None
+
+class UserSettingsResponse(UserSettingsBase):
+    id: int
+    user_id: int
+    class Config:
+        from_attributes = True

@@ -75,6 +75,20 @@ class Transaction(Base):
     account_ref = Column(String, default="")    # e.g. "Axis Credit Card"
     txn_date = Column(String, nullable=False)   # ISO date string "YYYY-MM-DD"
     txn_ref = Column(String, default="")        # UPI ref / dedup key — prevents double import
-    source = Column(String, default="manual")   # manual | sms | gmail | auto_sms | auto_gmail
+    source = Column(String, default="manual")   # manual | sms | gmail | auto_sms | auto_gmail | auto_phonepe
+    is_pending_review = Column(Boolean, default=False) # true if imported via background and needs categorization
+    txn_type = Column(String, default="sent")   # sent | received
 
     user = relationship("User", foreign_keys=[user_id])
+
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    is_dark_mode = Column(Boolean, default=True)
+    theme_color = Column(String, default="0xFF00BCD4")
+    selected_font = Column(String, default="Inter")
+    currency = Column(String, default="₹")
+
+    user = relationship("User", backref="settings")

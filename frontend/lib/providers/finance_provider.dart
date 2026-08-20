@@ -31,7 +31,8 @@ class FinanceProvider with ChangeNotifier {
   List<dynamic> get loans => _myLoans;
 
   // Derived: parent categories only
-  List<dynamic> get parentCategories => _categories.where((c) => c['parent_id'] == null).toList();
+  List<dynamic> get parentCategories =>
+      _categories.where((c) => c['parent_id'] == null).toList();
 
   // Get sub-categories for a parent
   List<dynamic> subCategoriesOf(int parentId) =>
@@ -60,6 +61,27 @@ class FinanceProvider with ChangeNotifier {
   // ─── Income ─────────────────────────────────────────────────────
   Future<void> updateUserIncome(int userId, double income) async {
     await _api.updateUserIncome(userId, income);
+    await fetchData();
+  }
+
+  // ─── Users CRUD ─────────────────────────────────────────────────
+  Future<void> createUser(Map<String, dynamic> data) async {
+    await _api.createUser(data);
+    await fetchData();
+  }
+
+  Future<void> updateUser(int id, Map<String, dynamic> data) async {
+    await _api.updateUser(id, data);
+    await fetchData();
+  }
+
+  Future<void> deleteUser(int id) async {
+    await _api.deleteUser(id);
+    await fetchData();
+  }
+
+  Future<void> updateMyProfile(Map<String, dynamic> data) async {
+    await _api.updateMyProfile(data);
     await fetchData();
   }
 
@@ -159,18 +181,22 @@ class FinanceProvider with ChangeNotifier {
   Future<void> createTransaction(Map<String, dynamic> data) async {
     await _api.createTransaction(data);
     await fetchTransactions();
+    // Refresh dashboard data too since account balances may have changed
+    _fetchDashboardSilently();
   }
 
   Future<void> updateTransaction(int id, Map<String, dynamic> data) async {
     await _api.updateTransaction(id, data);
     await fetchTransactions();
+    _fetchDashboardSilently();
   }
 
   Future<void> deleteTransaction(int id) async {
     await _api.deleteTransaction(id);
     await fetchTransactions();
+    _fetchDashboardSilently();
   }
-  
+
   // ─── AI Chat ─────────────────────────────────────────────────────
   Future<String> chatWithAi(List<Map<String, dynamic>> messages) async {
     return await _api.chatWithAi(messages);
@@ -188,5 +214,71 @@ class FinanceProvider with ChangeNotifier {
     } catch (e) {
       // Silently fail analytics – not critical
     }
+  }
+
+  // ─── Advanced Live Dashboard Data ─────────────────────────────────
+  List<dynamic> _dailySpending = [];
+  Map<String, dynamic> _spendingVelocity = {};
+  Map<String, dynamic> _accountFlow = {};
+  Map<String, dynamic> _insights = {};
+  bool _isDashboardLoading = false;
+
+  List<dynamic> get dailySpending => _dailySpending;
+  Map<String, dynamic> get spendingVelocity => _spendingVelocity;
+  Map<String, dynamic> get accountFlow => _accountFlow;
+  Map<String, dynamic> get insights => _insights;
+  bool get isDashboardLoading => _isDashboardLoading;
+
+  /// Fetches all dashboard data in parallel for maximum performance
+  Future<void> fetchDashboardData() async {
+    _isDashboardLoading = true;
+    notifyListeners();
+    try {
+      final results = await Future.wait([
+        _api.getDailySpending(),
+        _api.getSpendingVelocity(),
+        _api.getAccountFlow(),
+        _api.getInsights(),
+        _api.getMonthlyAnalytics(),
+        _api.getTransactions(),
+        _api.getTransactionSummary(),
+      ]);
+      _dailySpending = results[0] as List<dynamic>;
+      _spendingVelocity = results[1] as Map<String, dynamic>;
+      _accountFlow = results[2] as Map<String, dynamic>;
+      _insights = results[3] as Map<String, dynamic>;
+      _monthlyTrend = (results[4] as List<dynamic>)
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      _transactions = results[5] as List<dynamic>;
+      _txnSummary = results[6] as Map<String, dynamic>;
+      if (_selectedMonth.isEmpty) {
+        final now = DateTime.now();
+        _selectedMonth = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+      }
+    } catch (e) {
+      _error = e.toString().replaceAll('Exception: ', '');
+    }
+    _isDashboardLoading = false;
+    notifyListeners();
+  }
+
+  /// Silently refresh dashboard-related data (called after txn changes)
+  void _fetchDashboardSilently() {
+    Future.microtask(() async {
+      try {
+        final results = await Future.wait([
+          _api.getDailySpending(),
+          _api.getSpendingVelocity(),
+          _api.getInsights(),
+          _api.getMyAccounts(),
+        ]);
+        _dailySpending = results[0] as List<dynamic>;
+        _spendingVelocity = results[1] as Map<String, dynamic>;
+        _insights = results[2] as Map<String, dynamic>;
+        _myAccounts = results[3] as List<dynamic>;
+        notifyListeners();
+      } catch (_) {}
+    });
   }
 }

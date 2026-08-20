@@ -5,18 +5,20 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:window_manager/window_manager.dart';
 
-
 import 'providers/auth_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/finance_provider.dart';
 import 'services/auto_sync_service.dart';
+import 'services/notification_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (Platform.isAndroid) {
     await AutoSyncService.initialize();
+    await FinDuoNotificationService.initialize();
   }
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
     await windowManager.ensureInitialized();
@@ -33,11 +35,12 @@ void main() async {
     });
   }
 
+  final settingsProvider = await SettingsProvider.create();
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProvider.value(value: settingsProvider),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => FinanceProvider()),
       ],
@@ -91,7 +94,7 @@ class FinDuoApp extends StatelessWidget {
             ),
             textTheme: _buildTextTheme(font, ThemeData.dark().textTheme),
           ),
-          home: const AuthenticationWrapper(),
+          home: const SplashScreen(),
         );
       },
     );

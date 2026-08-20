@@ -8,7 +8,7 @@ class UnifiedTransaction {
   final String merchant;
   final String refNo;
   final String paymentMethod;
-  final Set<String> sources;   // 'sms', 'gmail'
+  final Set<String> sources; // 'sms', 'gmail'
   final String rawSms;
   final String rawGmail;
   bool selected;
@@ -59,15 +59,25 @@ class SyncEngine {
     }
 
     if (includeGmail && GmailService.isSignedIn) {
-      gmailTxns.addAll(await GmailService.fetchTransactions(from: from, to: to));
+      gmailTxns.addAll(
+        await GmailService.fetchTransactions(from: from, to: to),
+      );
     }
 
     // Filter by date range
     final fromStr = _fmtDate(from);
     final toStr = _fmtDate(to);
 
-    final filteredSms = smsTxns.where((t) => t.date.compareTo(fromStr) >= 0 && t.date.compareTo(toStr) <= 0).toList();
-    final filteredGmail = gmailTxns.where((t) => t.date.compareTo(fromStr) >= 0 && t.date.compareTo(toStr) <= 0).toList();
+    final filteredSms = smsTxns
+        .where(
+          (t) => t.date.compareTo(fromStr) >= 0 && t.date.compareTo(toStr) <= 0,
+        )
+        .toList();
+    final filteredGmail = gmailTxns
+        .where(
+          (t) => t.date.compareTo(fromStr) >= 0 && t.date.compareTo(toStr) <= 0,
+        )
+        .toList();
 
     return _correlate(filteredSms, filteredGmail);
   }
@@ -97,27 +107,33 @@ class SyncEngine {
       if (gmailMatch >= 0) {
         // Merge: prefer Gmail merchant (richer data)
         final g = gmailList[gmailMatch];
-        merged.add(UnifiedTransaction(
-          amount: s.amount,
-          date: s.date,
-          merchant: g.merchant.length > s.merchant.length ? g.merchant : s.merchant,
-          refNo: s.refNo.isNotEmpty ? s.refNo : g.refNo,
-          paymentMethod: 'UPI',
-          sources: {'sms', 'gmail'},
-          rawSms: s.rawSms,
-          rawGmail: g.rawBody,
-        ));
+        merged.add(
+          UnifiedTransaction(
+            amount: s.amount,
+            date: s.date,
+            merchant: g.merchant.length > s.merchant.length
+                ? g.merchant
+                : s.merchant,
+            refNo: s.refNo.isNotEmpty ? s.refNo : g.refNo,
+            paymentMethod: 'UPI',
+            sources: {'sms', 'gmail'},
+            rawSms: s.rawSms,
+            rawGmail: g.rawBody,
+          ),
+        );
         matchedGmailIdx.add(gmailMatch);
       } else {
-        merged.add(UnifiedTransaction(
-          amount: s.amount,
-          date: s.date,
-          merchant: s.merchant,
-          refNo: s.refNo,
-          paymentMethod: 'UPI',
-          sources: {'sms'},
-          rawSms: s.rawSms,
-        ));
+        merged.add(
+          UnifiedTransaction(
+            amount: s.amount,
+            date: s.date,
+            merchant: s.merchant,
+            refNo: s.refNo,
+            paymentMethod: 'UPI',
+            sources: {'sms'},
+            rawSms: s.rawSms,
+          ),
+        );
       }
     }
 
@@ -125,15 +141,17 @@ class SyncEngine {
     for (int i = 0; i < gmailList.length; i++) {
       if (matchedGmailIdx.contains(i)) continue;
       final g = gmailList[i];
-      merged.add(UnifiedTransaction(
-        amount: g.amount,
-        date: g.date,
-        merchant: g.merchant,
-        refNo: g.refNo,
-        paymentMethod: 'UPI',
-        sources: {'gmail'},
-        rawGmail: g.rawBody,
-      ));
+      merged.add(
+        UnifiedTransaction(
+          amount: g.amount,
+          date: g.date,
+          merchant: g.merchant,
+          refNo: g.refNo,
+          paymentMethod: 'UPI',
+          sources: {'gmail'},
+          rawGmail: g.rawBody,
+        ),
+      );
     }
 
     merged.sort((a, b) => b.date.compareTo(a.date));
@@ -142,8 +160,12 @@ class SyncEngine {
 
   /// Match heuristic: by ref OR (same amount + date within 1 day)
   static bool _isMatch(
-    double a1, String d1, String r1,
-    double a2, String d2, String r2,
+    double a1,
+    String d1,
+    String r1,
+    double a2,
+    String d2,
+    String r2,
   ) {
     // Ref match (most reliable)
     if (r1.isNotEmpty && r2.isNotEmpty && r1 == r2) return true;

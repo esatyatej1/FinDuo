@@ -7,10 +7,30 @@ import '../providers/settings_provider.dart';
 class OverviewScreen extends StatelessWidget {
   const OverviewScreen({super.key});
 
-  String _fmtFull(double val) {
-    final n = val.toInt();
+  String _fmtFull(double val, [double rate = 1.0]) {
+    final n = (val * rate).toInt();
     return n.toString().replaceAllMapped(
-        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (m) => '${m[1]},',
+    );
+  }
+
+  bool _isItemPaid(dynamic item, List<dynamic> txns, String nameKey, String amtKey) {
+    final target = (item[nameKey] ?? '').toString().toLowerCase();
+    final targetAmt = (item[amtKey] ?? 0.0).toDouble();
+    if (target.isEmpty && targetAmt == 0) return false;
+    
+    return txns.any((txn) {
+      if (txn['txn_type'] != 'sent') return false;
+      final title = (txn['title'] ?? '').toString().toLowerCase();
+      final notes = (txn['notes'] ?? '').toString().toLowerCase();
+      final amt = (txn['amount'] ?? 0.0).toDouble();
+      
+      bool nameMatches = target.isNotEmpty && (title.contains(target) || notes.contains(target));
+      bool amtMatches = targetAmt > 0 && amt == targetAmt;
+      
+      return nameMatches || amtMatches;
+    });
   }
 
   @override
@@ -31,9 +51,11 @@ class OverviewScreen extends StatelessWidget {
             children: [
               const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
               const SizedBox(height: 12),
-              Text(finance.error ?? 'Connection error',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.grey)),
+              Text(
+                finance.error ?? 'Connection error',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.grey),
+              ),
             ],
           ),
         ),
@@ -41,132 +63,172 @@ class OverviewScreen extends StatelessWidget {
     }
 
     final income = (finance.userData['monthly_income'] ?? 0.0).toDouble();
-    final totalEMIs =
-        finance.myLoans.fold<double>(0, (s, l) => s + (l['emi'] ?? 0.0));
-    final totalBills =
-        finance.expenses.fold<double>(0, (s, e) => s + (e['amount'] ?? 0.0));
+    
+    double paidEMIs = 0.0;
+    double unpaidEMIs = 0.0;
+    for (var l in finance.myLoans) {
+      final emi = (l['emi'] ?? 0.0).toDouble();
+      if (_isItemPaid(l, finance.transactions, 'name', 'emi')) {
+        paidEMIs += emi;
+      } else {
+        unpaidEMIs += emi;
+      }
+    }
+    final totalEMIs = paidEMIs + unpaidEMIs;
+
+    double paidBills = 0.0;
+    double unpaidBills = 0.0;
+    for (var e in finance.expenses) {
+      final amt = (e['amount'] ?? 0.0).toDouble();
+      if (_isItemPaid(e, finance.transactions, 'name', 'amount')) {
+        paidBills += amt;
+      } else {
+        unpaidBills += amt;
+      }
+    }
+    final totalBills = paidBills + unpaidBills;
+    
     final netBalance = income - totalEMIs - totalBills;
 
-    final creditCards =
-        finance.myAccounts.where((a) => a['type'] == 'Credit Card').toList();
-    final banks =
-        finance.myAccounts.where((a) => a['type'] == 'Bank').toList();
+    final creditCards = finance.myAccounts
+        .where((a) => a['type'] == 'Credit Card')
+        .toList();
+    final banks = finance.myAccounts.where((a) => a['type'] == 'Bank').toList();
     final totalCCLimit = creditCards.fold<double>(
-        0, (s, a) => s + (a['limit'] ?? 0.0));
+      0,
+      (s, a) => s + (a['limit'] ?? 0.0),
+    );
     final totalCCUsed = creditCards.fold<double>(
-        0, (s, a) => s + ((a['limit'] ?? 0.0) - (a['balance_left'] ?? 0.0)));
+      0,
+      (s, a) => s + ((a['limit'] ?? 0.0) - (a['balance_left'] ?? 0.0)),
+    );
 
     return RefreshIndicator(
       color: themeColor,
       onRefresh: () => finance.fetchData(),
       child: ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-      children: [
-        // ── Monthly Summary ─────────────────────────────────────────
-        _SectionTitle(title: 'Monthly Summary', icon: Icons.analytics_outlined),
-        const SizedBox(height: 10),
-        GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: 2,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-          childAspectRatio: 1.55,
-          children: [
-            _MetricCard(
-              title: 'Income',
-              value: '₹${_fmtFull(income)}',
-              icon: Icons.trending_up_rounded,
-              colors: [const Color(0xFF10B981), const Color(0xFF059669)],
-            ),
-            _MetricCard(
-              title: 'Total EMIs',
-              value: '₹${_fmtFull(totalEMIs)}',
-              icon: Icons.request_quote_rounded,
-              colors: [const Color(0xFFF59E0B), const Color(0xFFD97706)],
-            ),
-            _MetricCard(
-              title: 'Fixed Bills',
-              value: '₹${_fmtFull(totalBills)}',
-              icon: Icons.receipt_long_rounded,
-              colors: [const Color(0xFFEF4444), const Color(0xFFDC2626)],
-            ),
-            _MetricCard(
-              title: 'Net Balance',
-              value: '₹${_fmtFull(netBalance)}',
-              icon: netBalance >= 0
-                  ? Icons.savings_rounded
-                  : Icons.warning_rounded,
-              colors: netBalance >= 0
-                  ? [const Color(0xFF6366F1), const Color(0xFF4F46E5)]
-                  : [const Color(0xFFEF4444), const Color(0xFFDC2626)],
-            ),
-          ],
-        ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.1, end: 0),
-        const SizedBox(height: 20),
-
-        // ── Credit Cards ─────────────────────────────────────────────
-        if (creditCards.isNotEmpty) ...[
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          // ── Monthly Summary ─────────────────────────────────────────
           _SectionTitle(
-              title: 'Credit Cards', icon: Icons.credit_card_rounded),
+            title: 'Monthly Summary',
+            icon: Icons.analytics_outlined,
+          ),
           const SizedBox(height: 10),
-          // CC Utilization bar
-          _CCUtilizationBar(used: totalCCUsed, total: totalCCLimit),
-          const SizedBox(height: 10),
-          ...creditCards.map((cc) => _CreditCardTile(cc: cc)),
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: 1.55,
+            children: [
+              _MetricCard(
+                title: 'Income',
+                value: '${context.read<SettingsProvider>().currency}${_fmtFull(income, context.read<SettingsProvider>().conversionRate)}',
+                icon: Icons.trending_up_rounded,
+                colors: [const Color(0xFF10B981), const Color(0xFF059669)],
+              ),
+              _MetricCard(
+                title: 'EMIs (Paid / Pending)',
+                value: '${context.read<SettingsProvider>().currency}${_fmtFull(paidEMIs, context.read<SettingsProvider>().conversionRate)} / ${_fmtFull(unpaidEMIs, context.read<SettingsProvider>().conversionRate)}',
+                icon: Icons.request_quote_rounded,
+                colors: [const Color(0xFFF59E0B), const Color(0xFFD97706)],
+              ),
+              _MetricCard(
+                title: 'Bills (Paid / Pending)',
+                value: '${context.read<SettingsProvider>().currency}${_fmtFull(paidBills, context.read<SettingsProvider>().conversionRate)} / ${_fmtFull(unpaidBills, context.read<SettingsProvider>().conversionRate)}',
+                icon: Icons.receipt_long_rounded,
+                colors: [const Color(0xFFEF4444), const Color(0xFFDC2626)],
+              ),
+              _MetricCard(
+                title: 'Balance Left Over',
+                value: '${context.read<SettingsProvider>().currency}${_fmtFull(netBalance, context.read<SettingsProvider>().conversionRate)}',
+                icon: netBalance >= 0
+                    ? Icons.savings_rounded
+                    : Icons.warning_rounded,
+                colors: netBalance >= 0
+                    ? [const Color(0xFF6366F1), const Color(0xFF4F46E5)]
+                    : [const Color(0xFFEF4444), const Color(0xFFDC2626)],
+              ),
+            ],
+          ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.1, end: 0),
           const SizedBox(height: 20),
-        ],
 
-        // ── Bank Accounts ─────────────────────────────────────────────
-        _SectionTitle(
-            title: 'Bank Accounts', icon: Icons.account_balance_rounded),
-        const SizedBox(height: 10),
-        if (banks.isEmpty)
-          _EmptyTile(text: 'No bank accounts')
-        else
-          ...banks.map((b) => _BankTile(acc: b, themeColor: themeColor)),
-        const SizedBox(height: 20),
+          // ── Credit Cards ─────────────────────────────────────────────
+          if (creditCards.isNotEmpty) ...[
+            _SectionTitle(
+              title: 'Credit Cards',
+              icon: Icons.credit_card_rounded,
+            ),
+            const SizedBox(height: 10),
+            // CC Utilization bar
+            _CCUtilizationBar(used: totalCCUsed, total: totalCCLimit),
+            const SizedBox(height: 10),
+            ...creditCards.map((cc) => _CreditCardTile(cc: cc)),
+            const SizedBox(height: 20),
+          ],
 
-        // ── Active EMIs ───────────────────────────────────────────────
-        _SectionTitle(
-            title: 'Active EMIs', icon: Icons.request_quote_rounded),
-        const SizedBox(height: 10),
-        if (finance.myLoans.isEmpty)
-          _EmptyTile(text: 'No active loans')
-        else
-          ...finance.myLoans.map((l) => _LoanTile(loan: l)),
-        const SizedBox(height: 20),
+          // ── Bank Accounts ─────────────────────────────────────────────
+          _SectionTitle(
+            title: 'Bank Accounts',
+            icon: Icons.account_balance_rounded,
+          ),
+          const SizedBox(height: 10),
+          if (banks.isEmpty)
+            _EmptyTile(text: 'No bank accounts')
+          else
+            ...banks.map((b) => _BankTile(acc: b, themeColor: themeColor)),
+          const SizedBox(height: 20),
 
-        // ── Fixed Bills ───────────────────────────────────────────────
-        _SectionTitle(
-            title: 'Fixed Monthly Bills', icon: Icons.receipt_long_rounded),
-        const SizedBox(height: 10),
-        if (finance.expenses.isEmpty)
-          _EmptyTile(text: 'No fixed bills')
-        else
-          ...finance.expenses.map((e) => _BillTile(exp: e)),
-        const SizedBox(height: 20),
+          // ── Active EMIs ───────────────────────────────────────────────
+          _SectionTitle(
+            title: 'Active EMIs',
+            icon: Icons.request_quote_rounded,
+          ),
+          const SizedBox(height: 10),
+          if (finance.myLoans.isEmpty)
+            _EmptyTile(text: 'No active loans')
+          else
+            ...finance.myLoans.map((l) => _LoanTile(loan: l, isPaid: _isItemPaid(l, finance.transactions, 'name', 'emi'))),
+          const SizedBox(height: 20),
 
-        // ── Spending Categories ───────────────────────────────────────
-        _SectionTitle(
-            title: 'Spending Categories', icon: Icons.category_rounded),
-        const SizedBox(height: 10),
-        if (finance.parentCategories.isEmpty)
-          _EmptyTile(text: 'No categories defined')
-        else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: finance.parentCategories
-                .map((cat) => _CategoryPill(
+          // ── Fixed Bills ───────────────────────────────────────────────
+          _SectionTitle(
+            title: 'Fixed Monthly Bills',
+            icon: Icons.receipt_long_rounded,
+          ),
+          const SizedBox(height: 10),
+          if (finance.expenses.isEmpty)
+            _EmptyTile(text: 'No fixed bills')
+          else
+            ...finance.expenses.map((e) => _BillTile(exp: e, isPaid: _isItemPaid(e, finance.transactions, 'name', 'amount'))),
+          const SizedBox(height: 20),
+
+          // ── Spending Categories ───────────────────────────────────────
+          _SectionTitle(
+            title: 'Transaction Categories',
+            icon: Icons.category_rounded,
+          ),
+          const SizedBox(height: 10),
+          if (finance.parentCategories.isEmpty)
+            _EmptyTile(text: 'No categories defined')
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: finance.parentCategories
+                  .map(
+                    (cat) => _CategoryPill(
                       category: cat,
                       subs: finance.subCategoriesOf(cat['id']),
                       themeColor: themeColor,
-                    ))
-                .toList(),
-          ),
-        const SizedBox(height: 16),
-      ],
+                    ),
+                  )
+                  .toList(),
+            ),
+          const SizedBox(height: 16),
+        ],
       ), // end ListView
     ); // end RefreshIndicator
   }
@@ -187,11 +249,13 @@ class _SectionTitle extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: Colors.grey),
         const SizedBox(width: 6),
-        Text(title,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.3,
-                )),
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.3,
+          ),
+        ),
       ],
     );
   }
@@ -202,11 +266,12 @@ class _MetricCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final List<Color> colors;
-  const _MetricCard(
-      {required this.title,
-      required this.value,
-      required this.icon,
-      required this.colors});
+  const _MetricCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.colors,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -236,14 +301,19 @@ class _MetricCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title,
-                  style:
-                      const TextStyle(color: Colors.grey, fontSize: 11)),
+              Text(
+                title,
+                style: const TextStyle(color: Colors.grey, fontSize: 11),
+              ),
               const SizedBox(height: 2),
-              Text(value,
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
           ),
         ],
@@ -257,8 +327,10 @@ class _CCUtilizationBar extends StatelessWidget {
   final double total;
   const _CCUtilizationBar({required this.used, required this.total});
 
-  String _fmt(double v) => v.toInt().toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
+  String _fmt(double v, [double rate = 1.0]) => (v * rate).toInt().toString().replaceAllMapped(
+    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+    (m) => '${m[1]},',
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -266,8 +338,8 @@ class _CCUtilizationBar extends StatelessWidget {
     final color = pct > 0.8
         ? Colors.redAccent
         : pct > 0.5
-            ? Colors.orangeAccent
-            : Colors.green;
+        ? Colors.orangeAccent
+        : Colors.green;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -281,14 +353,21 @@ class _CCUtilizationBar extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Overall Utilization',
-                  style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w600)),
-              Text('${(pct * 100).toStringAsFixed(0)}%',
-                  style: TextStyle(
-                      color: color,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold)),
+              Text(
+                'Overall Utilization',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                '${(pct * 100).toStringAsFixed(0)}%',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -305,11 +384,14 @@ class _CCUtilizationBar extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Used: ₹${_fmt(used)}',
-                  style: TextStyle(fontSize: 11, color: color)),
-              Text('Total: ₹${_fmt(total)}',
-                  style: const TextStyle(
-                      fontSize: 11, color: Colors.grey)),
+              Text(
+                'Used: ${context.read<SettingsProvider>().currency}${_fmt(used, context.read<SettingsProvider>().conversionRate)}',
+                style: TextStyle(fontSize: 11, color: color),
+              ),
+              Text(
+                'Total: ${context.read<SettingsProvider>().currency}${_fmt(total, context.read<SettingsProvider>().conversionRate)}',
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
             ],
           ),
         ],
@@ -322,8 +404,10 @@ class _CreditCardTile extends StatelessWidget {
   final dynamic cc;
   const _CreditCardTile({required this.cc});
 
-  String _fmt(double v) => v.toInt().toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
+  String _fmt(double v, [double rate = 1.0]) => (v * rate).toInt().toString().replaceAllMapped(
+    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+    (m) => '${m[1]},',
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -334,8 +418,8 @@ class _CreditCardTile extends StatelessWidget {
     final color = pct > 0.9
         ? Colors.redAccent
         : pct > 0.5
-            ? Colors.orangeAccent
-            : Colors.green;
+        ? Colors.orangeAccent
+        : Colors.green;
     final isMaxed = left <= 0;
     final isClear = left >= limit;
 
@@ -351,20 +435,29 @@ class _CreditCardTile extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-            color: Colors.deepPurpleAccent.withValues(alpha: 0.25)),
+          color: Colors.deepPurpleAccent.withValues(alpha: 0.25),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.credit_card_rounded,
-                  color: Color(0xFF7C3AED), size: 18),
+              const Icon(
+                Icons.credit_card_rounded,
+                color: Color(0xFF7C3AED),
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Expanded(
-                  child: Text('${cc['bank_name']}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14))),
+                child: Text(
+                  '${cc['bank_name']}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
               if (isMaxed)
                 _StatusBadge('MAXED', Colors.redAccent)
               else if (isClear)
@@ -385,17 +478,22 @@ class _CreditCardTile extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Limit: ₹${_fmt(limit)}',
-                  style:
-                      const TextStyle(fontSize: 11, color: Colors.grey)),
-              Text('Used: ₹${_fmt(used)}',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: color,
-                      fontWeight: FontWeight.w600)),
-              Text('Left: ₹${_fmt(left)}',
-                  style:
-                      const TextStyle(fontSize: 11, color: Colors.grey)),
+              Text(
+                'Limit: ${context.read<SettingsProvider>().currency}${_fmt(limit, context.read<SettingsProvider>().conversionRate)}',
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+              Text(
+                'Used: ${context.read<SettingsProvider>().currency}${_fmt(used, context.read<SettingsProvider>().conversionRate)}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                'Left: ${context.read<SettingsProvider>().currency}${_fmt(left, context.read<SettingsProvider>().conversionRate)}',
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
             ],
           ),
         ],
@@ -417,9 +515,14 @@ class _StatusBadge extends StatelessWidget {
         color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(label,
-          style: TextStyle(
-              color: color, fontSize: 9, fontWeight: FontWeight.bold)),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 }
@@ -429,9 +532,15 @@ class _BankTile extends StatelessWidget {
   final Color themeColor;
   const _BankTile({required this.acc, required this.themeColor});
 
+  String _fmt(double v, [double rate = 1.0]) => (v * rate).toInt().toString().replaceAllMapped(
+    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+    (m) => '${m[1]},',
+  );
+
   @override
   Widget build(BuildContext context) {
     final isActive = acc['is_active'] == true;
+    final balance = (acc['balance_left'] ?? 0.0).toDouble();
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -449,42 +558,52 @@ class _BankTile extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color:
-                  (isActive ? themeColor : Colors.grey).withValues(alpha: 0.15),
+              color: (isActive ? themeColor : Colors.grey).withValues(
+                alpha: 0.15,
+              ),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(Icons.account_balance_rounded,
-                color: isActive ? themeColor : Colors.grey, size: 18),
+            child: Icon(
+              Icons.account_balance_rounded,
+              color: isActive ? themeColor : Colors.grey,
+              size: 18,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(acc['bank_name'] ?? '',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 14)),
-                const Text('Bank Account',
-                    style: TextStyle(color: Colors.grey, fontSize: 11)),
+                Text(
+                  acc['bank_name'] ?? '',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                Text(
+                  'Bank Account • ${isActive ? "Active" : "Passive"}',
+                  style: const TextStyle(color: Colors.grey, fontSize: 11),
+                ),
               ],
             ),
           ),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: (isActive ? Colors.green : Colors.orange)
-                  .withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              isActive ? 'Active' : 'Passive',
-              style: TextStyle(
-                color: isActive ? Colors.green : Colors.orange,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text(
+                'Balance',
+                style: TextStyle(fontSize: 10, color: Colors.grey),
               ),
-            ),
+              Text(
+                '${context.read<SettingsProvider>().currency}${_fmt(balance, context.read<SettingsProvider>().conversionRate)}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: isActive ? themeColor : Colors.grey,
+                  fontSize: 14,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -494,10 +613,13 @@ class _BankTile extends StatelessWidget {
 
 class _LoanTile extends StatelessWidget {
   final dynamic loan;
-  const _LoanTile({required this.loan});
+  final bool isPaid;
+  const _LoanTile({required this.loan, required this.isPaid});
 
-  String _fmt(double v) => v.toInt().toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
+  String _fmt(double v, [double rate = 1.0]) => (v * rate).toInt().toString().replaceAllMapped(
+    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+    (m) => '${m[1]},',
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -507,31 +629,46 @@ class _LoanTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border:
-            Border.all(color: Colors.orangeAccent.withValues(alpha: 0.25)),
+        border: Border.all(color: isPaid ? Colors.green.withValues(alpha: 0.25) : Colors.orangeAccent.withValues(alpha: 0.25)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.orangeAccent.withValues(alpha: 0.12),
+              color: (isPaid ? Colors.green : Colors.orangeAccent).withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.request_quote_rounded,
-                color: Colors.orangeAccent, size: 18),
+            child: Icon(
+              Icons.request_quote_rounded,
+              color: isPaid ? Colors.green : Colors.orangeAccent,
+              size: 18,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(loan['name'] ?? '',
-                style: const TextStyle(
-                    fontWeight: FontWeight.w500, fontSize: 13)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  loan['name'] ?? '',
+                  style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                ),
+                Text(
+                  isPaid ? 'Paid this month' : 'Pending',
+                  style: TextStyle(color: isPaid ? Colors.green : Colors.orangeAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
           ),
-          Text('₹${_fmt((loan['emi'] ?? 0.0).toDouble())}/mo',
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orangeAccent,
-                  fontSize: 13)),
+          Text(
+            '${context.read<SettingsProvider>().currency}${_fmt((loan['emi'] ?? 0.0).toDouble(), context.read<SettingsProvider>().conversionRate)}/mo',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: isPaid ? Colors.green : Colors.orangeAccent,
+              fontSize: 13,
+            ),
+          ),
         ],
       ),
     );
@@ -540,54 +677,64 @@ class _LoanTile extends StatelessWidget {
 
 class _BillTile extends StatelessWidget {
   final dynamic exp;
-  const _BillTile({required this.exp});
+  final bool isPaid;
+  const _BillTile({required this.exp, required this.isPaid});
 
-  String _fmt(double v) => v.toInt().toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
+  String _fmt(double v, [double rate = 1.0]) => (v * rate).toInt().toString().replaceAllMapped(
+    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+    (m) => '${m[1]},',
+  );
 
   @override
   Widget build(BuildContext context) {
     final isVar = exp['is_variable'] == true;
+    final color = isPaid ? Colors.green : (isVar ? Colors.orangeAccent : Colors.redAccent);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border:
-            Border.all(color: Colors.redAccent.withValues(alpha: 0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.redAccent.withValues(alpha: 0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.receipt_long_rounded,
-                color: Colors.redAccent, size: 18),
+            child: Icon(
+              Icons.receipt_long_rounded,
+              color: color,
+              size: 18,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(exp['name'] ?? '',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w500, fontSize: 13)),
-                if (isVar)
-                  const Text('Variable each month',
-                      style:
-                          TextStyle(color: Colors.grey, fontSize: 10)),
+                Text(
+                  exp['name'] ?? '',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w500,
+                    fontSize: 13,
+                  ),
+                ),
+                Text(
+                  isPaid ? 'Paid this month' : (isVar ? 'Variable each month' : 'Pending'),
+                  style: TextStyle(color: isPaid ? Colors.green : Colors.grey, fontSize: 10, fontWeight: isPaid ? FontWeight.bold : FontWeight.normal),
+                ),
               ],
             ),
           ),
           Text(
-            '₹${_fmt((exp['amount'] ?? 0.0).toDouble())}',
+            '${context.read<SettingsProvider>().currency}${_fmt((exp['amount'] ?? 0.0).toDouble(), context.read<SettingsProvider>().conversionRate)}',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: isVar ? Colors.orangeAccent : Colors.redAccent,
+              color: color,
               fontSize: 13,
             ),
           ),
@@ -601,10 +748,11 @@ class _CategoryPill extends StatelessWidget {
   final dynamic category;
   final List<dynamic> subs;
   final Color themeColor;
-  const _CategoryPill(
-      {required this.category,
-      required this.subs,
-      required this.themeColor});
+  const _CategoryPill({
+    required this.category,
+    required this.subs,
+    required this.themeColor,
+  });
 
   static const Map<String, IconData> _icons = {
     'Food': Icons.fastfood_rounded,
@@ -621,9 +769,7 @@ class _CategoryPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final icon = _icons[category['name']] ?? Icons.category_rounded;
     return GestureDetector(
-      onTap: subs.isNotEmpty
-          ? () => _showSubs(context)
-          : null,
+      onTap: subs.isNotEmpty ? () => _showSubs(context) : null,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
@@ -636,9 +782,10 @@ class _CategoryPill extends StatelessWidget {
           children: [
             Icon(icon, size: 14, color: themeColor),
             const SizedBox(width: 6),
-            Text(category['name'] ?? '',
-                style:
-                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+            Text(
+              category['name'] ?? '',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
             if (subs.isNotEmpty) ...[
               const SizedBox(width: 4),
               Container(
@@ -647,11 +794,14 @@ class _CategoryPill extends StatelessWidget {
                   color: themeColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text('${subs.length}',
-                    style: TextStyle(
-                        fontSize: 10,
-                        color: themeColor,
-                        fontWeight: FontWeight.bold)),
+                child: Text(
+                  '${subs.length}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: themeColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ],
           ],
@@ -664,27 +814,36 @@ class _CategoryPill extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (_) => Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(category['name'] ?? '',
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 16)),
+            Text(
+              category['name'] ?? '',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: subs
-                  .map((s) => Chip(
-                        label: Text(s['name'] ?? '',
-                            style: const TextStyle(fontSize: 12)),
-                        avatar: Icon(Icons.arrow_right_rounded,
-                            size: 16, color: themeColor),
-                      ))
+                  .map(
+                    (s) => Chip(
+                      label: Text(
+                        s['name'] ?? '',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      avatar: Icon(
+                        Icons.arrow_right_rounded,
+                        size: 16,
+                        color: themeColor,
+                      ),
+                    ),
+                  )
                   .toList(),
             ),
             const SizedBox(height: 16),
@@ -707,16 +866,13 @@ class _EmptyTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border:
-            Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
-          Icon(Icons.info_outline_rounded,
-              size: 16, color: Colors.grey[500]),
+          Icon(Icons.info_outline_rounded, size: 16, color: Colors.grey[500]),
           const SizedBox(width: 8),
-          Text(text,
-              style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+          Text(text, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
         ],
       ),
     );

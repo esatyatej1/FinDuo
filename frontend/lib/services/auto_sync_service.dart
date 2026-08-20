@@ -17,7 +17,8 @@ void backgroundSyncDispatcher() {
       // Load stored credentials
       const storage = FlutterSecureStorage();
       final token = await storage.read(key: 'auth_token');
-      final baseUrl = await storage.read(key: 'base_url') ?? 'http://192.168.0.181:8001';
+      final baseUrl =
+          await storage.read(key: 'base_url') ?? 'http://192.168.0.181:9005';
       if (token == null) return true;
 
       // Get last sync to determine range
@@ -43,18 +44,22 @@ void backgroundSyncDispatcher() {
 
       // Post to backend
       final api = ApiService()..setToken(token, baseUrl: baseUrl);
-      final txns = unified.map((u) => {
-        'amount': u.amount,
-        'title': u.merchant,
-        'notes': 'Ref: ${u.refNo}',
-        'category_id': null,
-        'sub_category_id': null,
-        'payment_method': 'UPI',
-        'account_ref': '',
-        'txn_date': u.date,
-        'txn_ref': u.refNo,
-        'source': 'auto_sms',
-      }).toList();
+      final txns = unified
+          .map(
+            (u) => {
+              'amount': u.amount,
+              'title': u.merchant,
+              'notes': 'Ref: ${u.refNo}',
+              'category_id': null,
+              'sub_category_id': null,
+              'payment_method': 'UPI',
+              'account_ref': '',
+              'txn_date': u.date,
+              'txn_ref': u.refNo,
+              'source': 'auto_sms',
+            },
+          )
+          .toList();
 
       await api.bulkImport(txns);
       await prefs.setString(_kLastSyncKey, to.toIso8601String());
@@ -79,9 +84,7 @@ class AutoSyncService {
       _kAutoSyncTask,
       _kAutoSyncTask,
       frequency: const Duration(hours: 2),
-      constraints: Constraints(
-        networkType: NetworkType.connected,
-      ),
+      constraints: Constraints(networkType: NetworkType.connected),
       existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
     );
     final prefs = await SharedPreferences.getInstance();

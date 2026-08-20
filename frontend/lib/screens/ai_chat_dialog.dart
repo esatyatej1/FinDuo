@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import '../providers/finance_provider.dart';
 import '../providers/settings_provider.dart';
 
@@ -39,7 +40,9 @@ class _AiChatDialogState extends State<AiChatDialog> {
     _scrollToBottom();
 
     try {
-      final response = await context.read<FinanceProvider>().chatWithAi(_messages);
+      final response = await context.read<FinanceProvider>().chatWithAi(
+        _messages,
+      );
       if (mounted) {
         setState(() {
           _messages.add({"role": "assistant", "content": response});
@@ -52,7 +55,7 @@ class _AiChatDialogState extends State<AiChatDialog> {
         setState(() {
           _messages.add({
             "role": "assistant",
-            "content": "I'm sorry, I encountered an error. Please try again."
+            "content": "I'm sorry, I encountered an error. Please try again.",
           });
           _isLoading = false;
         });
@@ -88,7 +91,8 @@ class _AiChatDialogState extends State<AiChatDialog> {
   @override
   Widget build(BuildContext context) {
     final themeColor = context.watch<SettingsProvider>().themeColor;
-    final isDark = context.watch<SettingsProvider>().themeMode == ThemeMode.dark;
+    final isDark =
+        context.watch<SettingsProvider>().themeMode == ThemeMode.dark;
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -99,13 +103,16 @@ class _AiChatDialogState extends State<AiChatDialog> {
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: themeColor.withValues(alpha: 0.3), width: 1.5),
+          border: Border.all(
+            color: themeColor.withValues(alpha: 0.3),
+            width: 1.5,
+          ),
           boxShadow: [
             BoxShadow(
               color: themeColor.withValues(alpha: 0.15),
               blurRadius: 30,
               spreadRadius: 5,
-            )
+            ),
           ],
         ),
         child: Column(
@@ -114,7 +121,9 @@ class _AiChatDialogState extends State<AiChatDialog> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: themeColor.withValues(alpha: 0.1))),
+                border: Border(
+                  bottom: BorderSide(color: themeColor.withValues(alpha: 0.1)),
+                ),
               ),
               child: Row(
                 children: [
@@ -122,28 +131,48 @@ class _AiChatDialogState extends State<AiChatDialog> {
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [themeColor.withValues(alpha: 0.2), themeColor.withValues(alpha: 0.05)],
+                        colors: [
+                          themeColor.withValues(alpha: 0.2),
+                          themeColor.withValues(alpha: 0.05),
+                        ],
                       ),
                       shape: BoxShape.circle,
-                      border: Border.all(color: themeColor.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: themeColor.withValues(alpha: 0.3),
+                      ),
                     ),
-                    child: Icon(Icons.auto_awesome, color: themeColor, size: 18),
+                    child: Icon(
+                      Icons.auto_awesome,
+                      color: themeColor,
+                      size: 18,
+                    ),
                   ).animate().scale(duration: 400.ms, curve: Curves.easeOut),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('FinDuo Assist',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text('Powered by Cerebras AI',
-                            style: TextStyle(fontSize: 11, color: Colors.grey)),
+                        Text(
+                          'FinDuo Assist',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        Text(
+                          'Powered by Cerebras AI',
+                          style: TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
                       ],
                     ),
                   ),
                   if (_messages.isNotEmpty)
                     IconButton(
-                      icon: Icon(Icons.refresh_rounded, color: Colors.grey, size: 20),
+                      icon: Icon(
+                        Icons.refresh_rounded,
+                        color: Colors.grey,
+                        size: 20,
+                      ),
                       tooltip: 'Clear chat',
                       onPressed: () => setState(() => _messages.clear()),
                     ),
@@ -167,12 +196,14 @@ class _AiChatDialogState extends State<AiChatDialog> {
                         final msg = _messages[index];
                         final isUser = msg['role'] == 'user';
                         return _buildChatBubble(
-                          msg['content'],
-                          isUser,
-                          themeColor,
-                          isDark,
-                        ).animate().fadeIn(duration: 300.ms).slideY(
-                            begin: 0.1, end: 0, curve: Curves.easeOut);
+                              msg['content'],
+                              isUser,
+                              themeColor,
+                              isDark,
+                            )
+                            .animate()
+                            .fadeIn(duration: 300.ms)
+                            .slideY(begin: 0.1, end: 0, curve: Curves.easeOut);
                       },
                     ),
             ),
@@ -180,17 +211,28 @@ class _AiChatDialogState extends State<AiChatDialog> {
             // ── Typing Indicator ─────────────────────────────────────
             if (_isLoading)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
                 child: Row(
                   children: [
                     SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: themeColor),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: themeColor,
+                      ),
                     ),
                     const SizedBox(width: 12),
-                    Text('FinDuo Assist is thinking...',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                    Text(
+                      'FinDuo Assist is thinking...',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
                   ],
                 ).animate().fadeIn(),
               ),
@@ -199,7 +241,9 @@ class _AiChatDialogState extends State<AiChatDialog> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: themeColor.withValues(alpha: 0.1))),
+                border: Border(
+                  top: BorderSide(color: themeColor.withValues(alpha: 0.1)),
+                ),
               ),
               child: Row(
                 children: [
@@ -211,8 +255,13 @@ class _AiChatDialogState extends State<AiChatDialog> {
                         hintText: 'Ask about your finances...',
                         hintStyle: const TextStyle(fontSize: 14),
                         filled: true,
-                        fillColor: isDark ? Colors.black26 : Colors.grey.shade100,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        fillColor: isDark
+                            ? Colors.black26
+                            : Colors.grey.shade100,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(24),
                           borderSide: BorderSide.none,
@@ -231,7 +280,11 @@ class _AiChatDialogState extends State<AiChatDialog> {
                         color: _isLoading ? Colors.grey : themeColor,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                      child: const Icon(
+                        Icons.send_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
                     ),
                   ),
                 ],
@@ -250,15 +303,31 @@ class _AiChatDialogState extends State<AiChatDialog> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const SizedBox(height: 20),
-          Icon(Icons.smart_toy_rounded, size: 56, color: themeColor.withValues(alpha: 0.25))
+          Icon(
+                Icons.smart_toy_rounded,
+                size: 56,
+                color: themeColor.withValues(alpha: 0.25),
+              )
               .animate(onPlay: (c) => c.repeat(reverse: true))
-              .scale(duration: 2.seconds, begin: const Offset(1, 1), end: const Offset(1.08, 1.08)),
+              .scale(
+                duration: 2.seconds,
+                begin: const Offset(1, 1),
+                end: const Offset(1.08, 1.08),
+              ),
           const SizedBox(height: 16),
-          Text('How can I help you?',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.grey.shade600)),
+          Text(
+            'How can I help you?',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+              color: Colors.grey.shade600,
+            ),
+          ),
           const SizedBox(height: 6),
-          Text('Ask me anything about your finances',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+          Text(
+            'Ask me anything about your finances',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+          ),
           const SizedBox(height: 24),
           // Quick prompts
           Wrap(
@@ -268,16 +337,31 @@ class _AiChatDialogState extends State<AiChatDialog> {
             children: _quickPrompts.asMap().entries.map((e) {
               return GestureDetector(
                 onTap: _isLoading ? null : () => _sendMessage(e.value),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: themeColor.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: themeColor.withValues(alpha: 0.2)),
-                  ),
-                  child: Text(e.value,
-                      style: TextStyle(fontSize: 12, color: themeColor, fontWeight: FontWeight.w500)),
-                ).animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: e.key * 60)),
+                child:
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: themeColor.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: themeColor.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Text(
+                        e.value,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: themeColor,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ).animate().fadeIn(
+                      duration: 300.ms,
+                      delay: Duration(milliseconds: e.key * 60),
+                    ),
               );
             }).toList(),
           ),
@@ -286,7 +370,12 @@ class _AiChatDialogState extends State<AiChatDialog> {
     );
   }
 
-  Widget _buildChatBubble(String text, bool isUser, Color themeColor, bool isDark) {
+  Widget _buildChatBubble(
+    String text,
+    bool isUser,
+    Color themeColor,
+    bool isDark,
+  ) {
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
@@ -303,20 +392,42 @@ class _AiChatDialogState extends State<AiChatDialog> {
                     end: Alignment.bottomRight,
                   )
                 : null,
-            color: isUser ? null : (isDark ? const Color(0xFF2D3748) : Colors.grey.shade200),
+            color: isUser
+                ? null
+                : (isDark ? const Color(0xFF2D3748) : Colors.grey.shade200),
             borderRadius: BorderRadius.circular(16).copyWith(
-              bottomRight: isUser ? const Radius.circular(4) : const Radius.circular(16),
-              bottomLeft: !isUser ? const Radius.circular(4) : const Radius.circular(16),
+              bottomRight: isUser
+                  ? const Radius.circular(4)
+                  : const Radius.circular(16),
+              bottomLeft: !isUser
+                  ? const Radius.circular(4)
+                  : const Radius.circular(16),
             ),
           ),
-          child: Text(
-            text,
-            style: TextStyle(
-              color: isUser ? Colors.white : (isDark ? Colors.white : Colors.black87),
-              fontSize: 14,
-              height: 1.4,
-            ),
-          ),
+          child: isUser
+              ? Text(
+                  text,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    height: 1.4,
+                  ),
+                )
+              : MarkdownBody(
+                  data: text,
+                  selectable: true,
+                  styleSheet: MarkdownStyleSheet(
+                    p: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 14,
+                      height: 1.4,
+                    ),
+                    strong: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
         ),
       ),
     );

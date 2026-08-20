@@ -6,7 +6,7 @@ import 'dart:convert';
 /// Result of parsing a PhonePe/bank email
 class GmailTransaction {
   final double amount;
-  final String date;       // YYYY-MM-DD
+  final String date; // YYYY-MM-DD
   final String merchant;
   final String refNo;
   final String subject;
@@ -71,14 +71,17 @@ class GmailService {
     if (_currentUser == null) return [];
 
     final auth = await _currentUser!.authentication;
-    final client = _GoogleAuthClient({'Authorization': 'Bearer ${auth.accessToken}'});
+    final client = _GoogleAuthClient({
+      'Authorization': 'Bearer ${auth.accessToken}',
+    });
     final gmailApi = gmail.GmailApi(client);
 
     final fromTs = from.millisecondsSinceEpoch ~/ 1000;
     final toTs = to.millisecondsSinceEpoch ~/ 1000;
 
     // Search query: PhonePe emails + bank UPI alerts
-    const query = '(from:noreply@phonepe.com OR from:no-reply@hdfcbank.net OR '
+    const query =
+        '(from:noreply@phonepe.com OR from:no-reply@hdfcbank.net OR '
         'from:alerts@axisbank.com OR from:SBIePay OR "PhonePe" OR "UPI") '
         'subject:(payment OR debit OR "money sent" OR "paid")';
 
@@ -95,7 +98,11 @@ class GmailService {
 
       for (final msg in messages) {
         try {
-          final full = await gmailApi.users.messages.get('me', msg.id!, format: 'full');
+          final full = await gmailApi.users.messages.get(
+            'me',
+            msg.id!,
+            format: 'full',
+          );
           final parsed = _parseEmail(full);
           if (parsed != null) results.add(parsed);
         } catch (_) {}
@@ -109,9 +116,30 @@ class GmailService {
 
   static GmailTransaction? _parseEmail(gmail.Message message) {
     final headers = message.payload?.headers ?? [];
-    final subject = headers.firstWhere((h) => h.name == 'Subject', orElse: () => gmail.MessagePartHeader()).value ?? '';
-    final from = headers.firstWhere((h) => h.name == 'From', orElse: () => gmail.MessagePartHeader()).value ?? '';
-    final dateHeader = headers.firstWhere((h) => h.name == 'Date', orElse: () => gmail.MessagePartHeader()).value ?? '';
+    final subject =
+        headers
+            .firstWhere(
+              (h) => h.name == 'Subject',
+              orElse: () => gmail.MessagePartHeader(),
+            )
+            .value ??
+        '';
+    final from =
+        headers
+            .firstWhere(
+              (h) => h.name == 'From',
+              orElse: () => gmail.MessagePartHeader(),
+            )
+            .value ??
+        '';
+    final dateHeader =
+        headers
+            .firstWhere(
+              (h) => h.name == 'Date',
+              orElse: () => gmail.MessagePartHeader(),
+            )
+            .value ??
+        '';
 
     // Only debit / payment emails
     final subjectLower = subject.toLowerCase();
@@ -119,7 +147,8 @@ class GmailService {
         !subjectLower.contains('payment') &&
         !subjectLower.contains('paid') &&
         !subjectLower.contains('sent') &&
-        !subjectLower.contains('money')) return null;
+        !subjectLower.contains('money'))
+      return null;
 
     final body = _extractBody(message.payload);
     if (body.isEmpty) return null;
@@ -145,9 +174,16 @@ class GmailService {
     if (part == null) return '';
     if (part.body?.data != null) {
       try {
-        final decoded = utf8.decode(base64Url.decode(part.body!.data!.replaceAll('-', '+').replaceAll('_', '/')));
+        final decoded = utf8.decode(
+          base64Url.decode(
+            part.body!.data!.replaceAll('-', '+').replaceAll('_', '/'),
+          ),
+        );
         // Strip HTML tags
-        return decoded.replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+        return decoded
+            .replaceAll(RegExp(r'<[^>]*>'), ' ')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
       } catch (_) {}
     }
     // Recurse into parts
@@ -160,8 +196,14 @@ class GmailService {
 
   static double? _extractAmount(String text) {
     final patterns = [
-      RegExp(r'(?:INR|Rs\.?|₹)\s*([0-9,]+(?:\.[0-9]{1,2})?)', caseSensitive: false),
-      RegExp(r'([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:INR|Rs\.?)', caseSensitive: false),
+      RegExp(
+        r'(?:INR|Rs\.?|₹)\s*([0-9,]+(?:\.[0-9]{1,2})?)',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:INR|Rs\.?)',
+        caseSensitive: false,
+      ),
     ];
     for (final p in patterns) {
       final m = p.firstMatch(text);
@@ -176,7 +218,9 @@ class GmailService {
   static String _parseDate(String dateHeader) {
     try {
       // RFC 2822 date parse
-      final dt = DateTime.parse(dateHeader.replaceAll(RegExp(r'\s+\([A-Z]+\)$'), '').trim());
+      final dt = DateTime.parse(
+        dateHeader.replaceAll(RegExp(r'\s+\([A-Z]+\)$'), '').trim(),
+      );
       return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
     } catch (_) {
       final now = DateTime.now();
@@ -186,7 +230,10 @@ class GmailService {
 
   static String _extractMerchant(String body, String subject) {
     final patterns = [
-      RegExp(r'(?:to|paid to|payment to)\s+([A-Za-z0-9 &\-_]{2,40}?)(?:\s+(?:on|via|ref|for)|[\.,]|$)', caseSensitive: false),
+      RegExp(
+        r'(?:to|paid to|payment to)\s+([A-Za-z0-9 &\-_]{2,40}?)(?:\s+(?:on|via|ref|for)|[\.,]|$)',
+        caseSensitive: false,
+      ),
       RegExp(r'VPA[:\s]+([^\s,\.@]+)', caseSensitive: false),
     ];
     for (final p in patterns) {
@@ -197,12 +244,23 @@ class GmailService {
       }
     }
     // Fall back to subject
-    final subj = subject.replaceAll(RegExp(r'(?:payment|debit|sent|paid|money|successful|of|INR|Rs|₹|[0-9,.])', caseSensitive: false), '').trim();
+    final subj = subject
+        .replaceAll(
+          RegExp(
+            r'(?:payment|debit|sent|paid|money|successful|of|INR|Rs|₹|[0-9,.])',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
     return subj.length > 2 ? subj : 'PhonePe/UPI';
   }
 
   static String _extractRef(String body) {
-    final p = RegExp(r'(?:UPI Ref|Ref No|Transaction ID|Txn ID|Ref)[:\s#]+([0-9A-Za-z]{6,25})', caseSensitive: false);
+    final p = RegExp(
+      r'(?:UPI Ref|Ref No|Transaction ID|Txn ID|Ref)[:\s#]+([0-9A-Za-z]{6,25})',
+      caseSensitive: false,
+    );
     final m = p.firstMatch(body);
     return m?.group(1) ?? '';
   }

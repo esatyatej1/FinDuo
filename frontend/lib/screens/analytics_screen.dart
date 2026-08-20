@@ -31,9 +31,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     });
   }
 
-  String _fmtFull(double v) => '₹${v.toInt().toString().replaceAllMapped(
-        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},',
-      )}';
+  String _fmtFull(double v, String c, [double rate = 1.0]) =>
+      '${c}${(v * rate).toInt().toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},')}';
 
   @override
   Widget build(BuildContext context) {
@@ -50,8 +49,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     final summary = finance.txnSummary;
     final total = (summary['total'] ?? 0.0).toDouble();
     final income = (finance.userData['monthly_income'] ?? 0.0).toDouble();
-    final totalEMIs = finance.myLoans.fold<double>(0, (s, l) => s + (l['emi'] ?? 0.0));
-    final totalBills = finance.expenses.fold<double>(0, (s, e) => s + (e['amount'] ?? 0.0));
+    final totalEMIs = finance.myLoans.fold<double>(
+      0,
+      (s, l) => s + (l['emi'] ?? 0.0),
+    );
+    final totalBills = finance.expenses.fold<double>(
+      0,
+      (s, e) => s + (e['amount'] ?? 0.0),
+    );
 
     // Category breakdown from current month transactions
     final Map<String, double> catBreakdown = {};
@@ -65,7 +70,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         );
         catName = cat['name'] ?? 'Other';
       }
-      catBreakdown[catName] = (catBreakdown[catName] ?? 0) + (t['amount'] ?? 0.0).toDouble();
+      catBreakdown[catName] =
+          (catBreakdown[catName] ?? 0) + (t['amount'] ?? 0.0).toDouble();
     }
     final sortedCats = catBreakdown.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
@@ -87,7 +93,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
         children: [
           // ── Monthly Budget Overview ───────────────────────────────
-          _SectionHeader(title: 'This Month', icon: Icons.calendar_today_rounded),
+          _SectionHeader(
+            title: 'This Month',
+            icon: Icons.calendar_today_rounded,
+          ),
           const SizedBox(height: 10),
           _BudgetSummaryCard(
             income: income,
@@ -100,7 +109,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
           // ── 6-Month Trend ─────────────────────────────────────────
           if (trend.isNotEmpty) ...[
-            _SectionHeader(title: '6-Month Spending Trend', icon: Icons.trending_up_rounded),
+            _SectionHeader(
+              title: '6-Month Transaction Trend',
+              icon: Icons.trending_up_rounded,
+            ),
             const SizedBox(height: 10),
             _TrendLineChart(trend: trend, themeColor: themeColor),
             const SizedBox(height: 20),
@@ -108,7 +120,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
           // ── Category Breakdown ────────────────────────────────────
           if (sortedCats.isNotEmpty) ...[
-            _SectionHeader(title: 'Spending by Category', icon: Icons.pie_chart_rounded),
+            _SectionHeader(
+              title: 'Transactions by Category',
+              icon: Icons.pie_chart_rounded,
+            ),
             const SizedBox(height: 10),
             _CategoryPieSection(
               cats: sortedCats,
@@ -120,7 +135,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
           // ── Payment Methods ───────────────────────────────────────
           if (methodBreak.isNotEmpty) ...[
-            _SectionHeader(title: 'Payment Methods', icon: Icons.payment_rounded),
+            _SectionHeader(
+              title: 'Payment Methods',
+              icon: Icons.payment_rounded,
+            ),
             const SizedBox(height: 10),
             _PaymentMethodBars(
               methods: methodBreak,
@@ -131,22 +149,28 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           ],
 
           // ── Top Transactions ──────────────────────────────────────
-          _SectionHeader(title: 'Top Spends This Month', icon: Icons.arrow_upward_rounded),
+          _SectionHeader(
+            title: 'Top Transactions This Month',
+            icon: Icons.arrow_upward_rounded,
+          ),
           const SizedBox(height: 10),
-          ..._getTopTxns(txns, finance, themeColor, 5)
-              .asMap()
-              .entries
-              .map((e) => e.value.animate().fadeIn(
-                    duration: 300.ms,
-                    delay: Duration(milliseconds: e.key * 50),
-                  )),
+          ..._getTopTxns(txns, finance, themeColor, 5).asMap().entries.map(
+            (e) => e.value.animate().fadeIn(
+              duration: 300.ms,
+              delay: Duration(milliseconds: e.key * 50),
+            ),
+          ),
         ],
       ),
     );
   }
 
   List<Widget> _getTopTxns(
-      List<dynamic> txns, FinanceProvider finance, Color themeColor, int limit) {
+    List<dynamic> txns,
+    FinanceProvider finance,
+    Color themeColor,
+    int limit,
+  ) {
     if (txns.isEmpty) {
       return [
         Container(
@@ -156,16 +180,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
           ),
-          child: const Row(children: [
-            Icon(Icons.info_outline_rounded, size: 16, color: Colors.grey),
-            SizedBox(width: 8),
-            Text('No transactions this month', style: TextStyle(color: Colors.grey, fontSize: 12)),
-          ]),
-        )
+          child: const Row(
+            children: [
+              Icon(Icons.info_outline_rounded, size: 16, color: Colors.grey),
+              SizedBox(width: 8),
+              Text(
+                'No transactions this month',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
       ];
     }
-    final sorted = [...txns]..sort((a, b) =>
-        (b['amount'] ?? 0.0).compareTo(a['amount'] ?? 0.0));
+    final sorted = [...txns]
+      ..sort((a, b) => (b['amount'] ?? 0.0).compareTo(a['amount'] ?? 0.0));
     return sorted.take(limit).map((t) {
       final amount = (t['amount'] ?? 0.0).toDouble();
       final catId = t['category_id'];
@@ -193,7 +222,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                 color: Colors.redAccent.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.arrow_outward_rounded, color: Colors.redAccent, size: 16),
+              child: const Icon(
+                Icons.arrow_outward_rounded,
+                color: Colors.redAccent,
+                size: 16,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -201,19 +234,29 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    t['title']?.toString().isNotEmpty == true ? t['title'] : catName,
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    t['title']?.toString().isNotEmpty == true
+                        ? t['title']
+                        : catName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  Text(t['txn_date'] ?? '',
-                      style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                  Text(
+                    t['txn_date'] ?? '',
+                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  ),
                 ],
               ),
             ),
             Text(
-              _fmtFull(amount),
+              _fmtFull(amount,  context.read<SettingsProvider>().currency, context.read<SettingsProvider>().conversionRate),
               style: const TextStyle(
-                  fontWeight: FontWeight.bold, fontSize: 14, color: Colors.redAccent),
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: Colors.redAccent,
+              ),
             ),
           ],
         ),
@@ -235,11 +278,13 @@ class _SectionHeader extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: Colors.grey),
         const SizedBox(width: 6),
-        Text(title,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.3,
-                )),
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.3,
+          ),
+        ),
       ],
     );
   }
@@ -259,26 +304,30 @@ class _BudgetSummaryCard extends StatelessWidget {
     required this.themeColor,
   });
 
-  String _fmt(double v) => '₹${v.toInt().toString().replaceAllMapped(
-        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},',
-      )}';
+  String _fmt(double v, String c, [double rate = 1.0]) =>
+      '${c}${(v * rate).toInt().toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},')}';
 
   @override
   Widget build(BuildContext context) {
     final committed = totalEMIs + totalBills;
     final spendable = (income - committed).clamp(0.0, double.infinity);
-    final pct = spendable > 0 ? (spentThisMonth / spendable).clamp(0.0, 1.0) : 0.0;
+    final pct = spendable > 0
+        ? (spentThisMonth / spendable).clamp(0.0, 1.0)
+        : 0.0;
     final color = pct > 0.9
         ? Colors.redAccent
         : pct > 0.7
-            ? Colors.orange
-            : Colors.green;
+        ? Colors.orange
+        : Colors.green;
 
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [themeColor.withValues(alpha: 0.15), themeColor.withValues(alpha: 0.05)],
+          colors: [
+            themeColor.withValues(alpha: 0.15),
+            themeColor.withValues(alpha: 0.05),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -291,19 +340,40 @@ class _BudgetSummaryCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Discretionary Budget', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                Text(_fmt(spendable),
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: themeColor)),
-              ]),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Discretionary Budget',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  Text(
+                    _fmt(spendable,  context.read<SettingsProvider>().currency, context.read<SettingsProvider>().conversionRate),
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: themeColor,
+                    ),
+                  ),
+                ],
+              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Text('${(pct * 100).toStringAsFixed(0)}% used',
-                    style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
+                child: Text(
+                  '${(pct * 100).toStringAsFixed(0)}% used',
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
               ),
             ],
           ),
@@ -318,13 +388,23 @@ class _BudgetSummaryCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          Row(children: [
-            _Stat(label: 'Income', value: _fmt(income), color: Colors.green),
-            const SizedBox(width: 16),
-            _Stat(label: 'Committed', value: _fmt(committed), color: Colors.orange),
-            const SizedBox(width: 16),
-            _Stat(label: 'Spent', value: _fmt(spentThisMonth), color: Colors.redAccent),
-          ]),
+          Row(
+            children: [
+              _Stat(label: 'Income', value: _fmt(income,  context.read<SettingsProvider>().currency, context.read<SettingsProvider>().conversionRate), color: Colors.green),
+              const SizedBox(width: 16),
+              _Stat(
+                label: 'Committed',
+                value: _fmt(committed,  context.read<SettingsProvider>().currency, context.read<SettingsProvider>().conversionRate),
+                color: Colors.orange,
+              ),
+              const SizedBox(width: 16),
+              _Stat(
+                label: 'Spent',
+                value: _fmt(spentThisMonth,  context.read<SettingsProvider>().currency, context.read<SettingsProvider>().conversionRate),
+                color: Colors.redAccent,
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -342,7 +422,14 @@ class _Stat extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-        Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
       ],
     );
   }
@@ -399,7 +486,9 @@ class _TrendLineChart extends StatelessWidget {
                 getTitlesWidget: (v, meta) {
                   if (v == 0) return const SizedBox();
                   return Text(
-                    v >= 1000 ? '${(v / 1000).toStringAsFixed(0)}k' : v.toInt().toString(),
+                    v >= 1000
+                        ? '${(v / 1000).toStringAsFixed(0)}k'
+                        : v.toInt().toString(),
                     style: const TextStyle(fontSize: 10, color: Colors.grey),
                   );
                 },
@@ -414,7 +503,21 @@ class _TrendLineChart extends StatelessWidget {
                   final month = trend[idx]['month']?.toString() ?? '';
                   final parts = month.split('-');
                   if (parts.length < 2) return const SizedBox();
-                  const names = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                  const names = [
+                    '',
+                    'Jan',
+                    'Feb',
+                    'Mar',
+                    'Apr',
+                    'May',
+                    'Jun',
+                    'Jul',
+                    'Aug',
+                    'Sep',
+                    'Oct',
+                    'Nov',
+                    'Dec',
+                  ];
                   final mNum = int.tryParse(parts[1]) ?? 0;
                   return Text(
                     mNum > 0 && mNum <= 12 ? names[mNum] : '',
@@ -423,8 +526,12 @@ class _TrendLineChart extends StatelessWidget {
                 },
               ),
             ),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
           ),
           borderData: FlBorderData(show: false),
           lineBarsData: [
@@ -482,7 +589,11 @@ class _CategoryPieSection extends StatefulWidget {
   final double total;
   final Color themeColor;
 
-  const _CategoryPieSection({required this.cats, required this.total, required this.themeColor});
+  const _CategoryPieSection({
+    required this.cats,
+    required this.total,
+    required this.themeColor,
+  });
 
   @override
   State<_CategoryPieSection> createState() => _CategoryPieSectionState();
@@ -491,9 +602,8 @@ class _CategoryPieSection extends StatefulWidget {
 class _CategoryPieSectionState extends State<_CategoryPieSection> {
   int _touchedIndex = -1;
 
-  String _fmt(double v) => '₹${v.toInt().toString().replaceAllMapped(
-        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},',
-      )}';
+  String _fmt(double v, String c, [double rate = 1.0]) =>
+      '${c}${(v * rate).toInt().toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},')}';
 
   @override
   Widget build(BuildContext context) {
@@ -521,7 +631,8 @@ class _CategoryPieSectionState extends State<_CategoryPieSection> {
                             if (resp == null || resp.touchedSection == null) {
                               _touchedIndex = -1;
                             } else {
-                              _touchedIndex = resp.touchedSection!.touchedSectionIndex;
+                              _touchedIndex =
+                                  resp.touchedSection!.touchedSectionIndex;
                             }
                           });
                         },
@@ -531,13 +642,19 @@ class _CategoryPieSectionState extends State<_CategoryPieSection> {
                       sections: cats.asMap().entries.map((e) {
                         final isTouched = e.key == _touchedIndex;
                         final color = _chartColors[e.key % _chartColors.length];
-                        final pct = widget.total > 0 ? e.value.value / widget.total * 100 : 0.0;
+                        final pct = widget.total > 0
+                            ? e.value.value / widget.total * 100
+                            : 0.0;
                         return PieChartSectionData(
                           value: e.value.value,
                           color: color,
                           radius: isTouched ? 70 : 60,
                           title: isTouched ? '${pct.toStringAsFixed(0)}%' : '',
-                          titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                          titleStyle: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                         );
                       }).toList(),
                     ),
@@ -549,7 +666,9 @@ class _CategoryPieSectionState extends State<_CategoryPieSection> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: cats.asMap().entries.map((e) {
                     final color = _chartColors[e.key % _chartColors.length];
-                    final pct = widget.total > 0 ? e.value.value / widget.total * 100 : 0.0;
+                    final pct = widget.total > 0
+                        ? e.value.value / widget.total * 100
+                        : 0.0;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Row(
@@ -599,17 +718,27 @@ class _CategoryPieSectionState extends State<_CategoryPieSection> {
                   Container(
                     width: 8,
                     height: 8,
-                    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(e.key,
-                        style: const TextStyle(fontSize: 12),
-                        overflow: TextOverflow.ellipsis),
+                    child: Text(
+                      e.key,
+                      style: const TextStyle(fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  Text(_fmt(e.value),
-                      style: TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.bold, color: color)),
+                  Text(
+                    _fmt(e.value, widget.themeColor == null ? '${context.read<SettingsProvider>().currency}' : context.read<SettingsProvider>().currency, context.read<SettingsProvider>().conversionRate),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
                   const SizedBox(width: 8),
                   SizedBox(
                     width: 60,
@@ -640,25 +769,34 @@ class _PaymentMethodBars extends StatelessWidget {
   final double total;
   final Color themeColor;
 
-  const _PaymentMethodBars({required this.methods, required this.total, required this.themeColor});
+  const _PaymentMethodBars({
+    required this.methods,
+    required this.total,
+    required this.themeColor,
+  });
 
-  String _fmt(double v) => '₹${v.toInt().toString().replaceAllMapped(
-        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},',
-      )}';
+  String _fmt(double v, String c, [double rate = 1.0]) =>
+      '${c}${(v * rate).toInt().toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},')}';
 
   IconData _methodIcon(String m) {
     switch (m) {
-      case 'UPI': return Icons.phone_android_rounded;
-      case 'Cash': return Icons.money_rounded;
-      case 'Credit Card': return Icons.credit_card_rounded;
-      case 'Debit Card': return Icons.payment_rounded;
-      default: return Icons.attach_money_rounded;
+      case 'UPI':
+        return Icons.phone_android_rounded;
+      case 'Cash':
+        return Icons.money_rounded;
+      case 'Credit Card':
+        return Icons.credit_card_rounded;
+      case 'Debit Card':
+        return Icons.payment_rounded;
+      default:
+        return Icons.attach_money_rounded;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final sorted = methods.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final sorted = methods.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -691,9 +829,21 @@ class _PaymentMethodBars extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(e.key, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                          Text(_fmt(e.value),
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
+                          Text(
+                            e.key,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            _fmt(e.value,  context.read<SettingsProvider>().currency, context.read<SettingsProvider>().conversionRate),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: color,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -710,8 +860,14 @@ class _PaymentMethodBars extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text('${(pct * 100).toStringAsFixed(0)}%',
-                    style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold)),
+                Text(
+                  '${(pct * 100).toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
           );
